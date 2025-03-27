@@ -3,7 +3,7 @@ from torch import nn
 from transformers import Trainer
 import torch.nn.functional as F
 import copy, os
-import deepspeed
+#import deepspeed
 from evaluate_util import get_dataloader, get_all_evals
 import copy
 import json 
@@ -20,15 +20,12 @@ def printll(name, inp):
     print(name, [round(x, 4) for x in inp])
 
 class CustomTrainer(Trainer):
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         input_ids, labels, attention_mask = inputs
         # forward pass
-        outputs = model(input_ids,labels=labels, attention_mask=attention_mask)
+        outputs = model(input_ids, labels=labels, attention_mask=attention_mask)
         # logits = outputs.get("logits")
         loss = outputs.loss
-        # # compute custom loss (suppose one has 3 labels with different weights)
-        # loss_fct = nn.CrossEntropyLoss(weight=torch.tensor([1.0, 2.0, 3.0], device=model.device))
-        # loss = loss_fct(logits.view(-1, self.model.config.num_labels), labels.view(-1))
         return (loss, outputs) if return_outputs else loss
     
     def prediction_step(self, model, inputs, prediction_loss_only: bool, ignore_keys=None):
