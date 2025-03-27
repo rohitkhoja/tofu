@@ -71,37 +71,36 @@ def main(cfg):
     # max_steps=5
     print(f"max_steps: {max_steps}")
     training_args = transformers.TrainingArguments(
-            per_device_train_batch_size=batch_size,
-            per_device_eval_batch_size=batch_size,
-            gradient_accumulation_steps=gradient_accumulation_steps,
-            # warmup_steps=max(1, max_steps//10),
-            warmup_steps=max(1, max_steps//cfg.num_epochs),
-            max_steps=max_steps,
-            learning_rate=cfg.lr,
-            bf16=True,
-            bf16_full_eval=True,
-            logging_steps=max(1,max_steps//20),
-            logging_dir=f'{cfg.save_dir}/logs',
-            output_dir=cfg.save_dir,
-            optim="paged_adamw_32bit",
-            save_steps=max_steps,
-            save_only_model=True,
-            ddp_find_unused_parameters= False,
-            evaluation_strategy="no",
-            deepspeed='config/ds_config.json',
-            weight_decay = cfg.weight_decay,
-            seed = cfg.seed,
-        )
-
+        per_device_train_batch_size=1,  # Reduced from 2
+        per_device_eval_batch_size=1,
+        gradient_accumulation_steps=16,  # Increased from 8
+        warmup_steps=max(1, max_steps//cfg.num_epochs),
+        max_steps=max_steps,
+        learning_rate=cfg.lr,
+        # Replace these problematic settings:
+        # bf16=True,
+        # bf16_full_eval=True,
+        # optim="paged_adamw_32bit",
+        
+        # With these Mac-compatible settings:
+        fp16=False,  # MPS doesn't fully support fp16 correctly in many cases
+        optim="adamw_torch",  # Use standard PyTorch optimizer
+        
+        logging_steps=max(1,max_steps//20),
+        logging_dir=f'{cfg.save_dir}/logs',
+        output_dir=cfg.save_dir,
+        save_steps=max_steps,
+        save_only_model=True,
+        ddp_find_unused_parameters=False,
+        weight_decay=cfg.weight_decay,
+        seed=cfg.seed
+    )
     model = AutoModelForCausalLM.from_pretrained(model_id, use_flash_attention_2=model_cfg["flash_attention2"]=="true", torch_dtype=torch.bfloat16, trust_remote_code = True)
-    
     # Hot fix for https://discuss.huggingface.co/t/help-with-llama-2-finetuning-setup/50035
     model.generation_config.do_sample = True
-
     if model_cfg["gradient_checkpointing"] == "true":
         model.gradient_checkpointing_enable()
-
-    if cfg.LoRA.r != 0:
+    if cfg.LoRA.r != 0: 
         config = LoraConfig(
             r=cfg.LoRA.r, 
             lora_alpha=cfg.LoRA.alpha, 
@@ -113,7 +112,6 @@ def main(cfg):
         model = get_peft_model(model, config)
         model.enable_input_require_grads()
     
-
     trainer = CustomTrainer(
         model=model,
         train_dataset=torch_format_dataset,
@@ -123,14 +121,13 @@ def main(cfg):
     )
     model.config.use_cache = False  # silence the warnings. Please re-enable for inference!
     trainer.train()
-
     #save the model
     if cfg.LoRA.r != 0:
         model = model.merge_and_unload()
-
-
     model.save_pretrained(cfg.save_dir)
     tokenizer.save_pretrained(cfg.save_dir)
 
 if __name__ == "__main__":
+    main()
+
     main()
